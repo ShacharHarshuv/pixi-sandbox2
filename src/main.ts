@@ -36,70 +36,85 @@ app.stage.addChild(mesh);
 // Get the UV buffer from the geometry
 const uvBuffer = mesh.geometry.getBuffer('aUV');
 
-// Helper function to set UV coordinates for the entire mesh
-// u0, v0 = top-left UV (0-1), u1, v1 = bottom-right UV (0-1)
-const setUVRect = (u0: number, v0: number, u1: number, v1: number) => {
-  const uvData = uvBuffer.data;
-  const verticesX = mesh.geometry.verticesX;
-  const verticesY = mesh.geometry.verticesY;
+// State tracking for scale and pan
+let currentScaleX = 1;
+let currentScaleY = 1;
+let currentPanX = 0;
+let currentPanY = 0;
 
-  for (let y = 0; y <= verticesY; y++) {
-    for (let x = 0; x <= verticesX; x++) {
-      const u = u0 + (u1 - u0) * (x / verticesX);
-      const v = v0 + (v1 - v0) * (y / verticesY);
-      const index = (y * (verticesX + 1) + x) * 2;
-      uvData[index] = u;
-      uvData[index + 1] = v;
-    }
-  }
-  uvBuffer.update();
-};
+// Store original UV coordinates for recalculation
+const originalUVs = new Float32Array(uvBuffer.data);
 
-// Zoom the texture (values > 1 make it appear bigger/zoomed in)
-// sx, sy control horizontal and vertical zoom
-// Scales existing UVs around center point to preserve perspective
-const zoomUV = (sx: number, sy: number) => {
+// Apply scale and pan transformations to UV coordinates
+const applyTransform = () => {
   const uvData = uvBuffer.data;
   const cx = 0.5;
   const cy = 0.5;
 
   for (let i = 0; i < uvData.length; i += 2) {
-    const u = uvData[i];
-    const v = uvData[i + 1];
-    uvData[i] = cx + (u - cx) / sx;
-    uvData[i + 1] = cy + (v - cy) / sy;
+    const originalU = originalUVs[i];
+    const originalV = originalUVs[i + 1];
+
+    // Apply scale around center
+    const scaledU = cx + (originalU - cx) / currentScaleX;
+    const scaledV = cy + (originalV - cy) / currentScaleY;
+
+    // Apply pan offset
+    uvData[i] = scaledU + currentPanX;
+    uvData[i + 1] = scaledV + currentPanY;
   }
   uvBuffer.update();
+
+  // Auto-save state
+  const state = {
+    scaleX: currentScaleX,
+    scaleY: currentScaleY,
+    panX: currentPanX,
+    panY: currentPanY,
+  };
+  localStorage.setItem('meshTransform', JSON.stringify(state));
 };
 
-// Pan/offset the texture in UV space
-const panUV = (du: number, dv: number) => {
-  const uvData = uvBuffer.data;
-  for (let i = 0; i < uvData.length; i += 2) {
-    uvData[i] += du;
-    uvData[i + 1] += dv;
-  }
-  uvBuffer.update();
-};
+// Initialize original UVs
+for (let i = 0; i < uvBuffer.data.length; i++) {
+  originalUVs[i] = uvBuffer.data[i];
+}
 
 function scale(value: number) {
-  zoomUV(value, value);
+  currentScaleX *= value;
+  currentScaleY *= value;
+  applyTransform();
 }
 
 function panRight() {
-  panUV(-0.05, 0);
+  currentPanX -= 0.05;
+  applyTransform();
 }
 
 function panLeft() {
-  panUV(0.05, 0);
+  currentPanX += 0.05;
+  applyTransform();
 }
 
 function panUp() {
-  panUV(0, 0.05);
+  currentPanY += 0.05;
+  applyTransform();
 }
 
 function panDown() {
-  panUV(0, -0.05);
+  currentPanY -= 0.05;
+  applyTransform();
+}
+
+// Load saved state on initialization
+const saved = localStorage.getItem('meshTransform');
+if (saved) {
+  const state = JSON.parse(saved);
+  currentScaleX = state.scaleX ?? 1;
+  currentScaleY = state.scaleY ?? 1;
+  currentPanX = state.panX ?? 0;
+  currentPanY = state.panY ?? 0;
+  applyTransform();
 }
 
 (window as any).scale = scale;
