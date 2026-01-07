@@ -117,8 +117,20 @@ if (saved) {
   applyTransform();
 }
 
+function downloadCanvas() {
+  const backgroundColor = app.renderer.background.color;
+
+  app.renderer.extract.download({
+    target: app.stage,
+    filename: 'canvas.png',
+    frame: app.screen,
+    clearColor: backgroundColor,
+  });
+}
+
 (window as any).scale = scale;
 (window as any).panRight = panRight;
 (window as any).panLeft = panLeft;
 (window as any).panUp = panUp;
 (window as any).panDown = panDown;
+(window as any).downloadCanvas = downloadCanvas;
