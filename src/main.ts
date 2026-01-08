@@ -1,4 +1,5 @@
 import { Application, Assets, PerspectiveMesh } from 'pixi.js';
+import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
 (async () => {
   const app = new Application();
@@ -13,126 +14,100 @@ import { Application, Assets, PerspectiveMesh } from 'pixi.js';
   document.body.appendChild(app.canvas);
 
   const texture = await Assets.load('/assets/image.png');
+
+  const quad: Quad = [
+    { x: 200, y: 150 },
+    { x: 500, y: 130 },
+    { x: 520, y: 340 },
+    { x: 190, y: 300 },
+  ];
+
   const mesh = new PerspectiveMesh({
     texture,
     verticesX: 10,
     verticesY: 10,
-
-    // top-left
-    x0: 200,
-    y0: 150,
-    // top-right
-    x1: 500,
-    y1: 130,
-    // bottom-right
-    x2: 520,
-    y2: 350,
-    // bottom-left
-    x3: 190,
-    y3: 300,
   });
 
   app.stage.addChild(mesh);
 
-  // Get the UV buffer from the geometry
-  const uvBuffer = mesh.geometry.getBuffer('aUV');
-
-  // State tracking for scale and pan
-  let currentScaleX = 1;
-  let currentScaleY = 1;
-  let currentPanX = 0;
-  let currentPanY = 0;
-
-  // Store original UV coordinates for recalculation
-  const originalUVs = new Float32Array(uvBuffer.data);
-
-  // Apply scale and pan transformations to UV coordinates
-  const applyTransform = () => {
-    const uvData = uvBuffer.data;
-    const cx = 0.5;
-    const cy = 0.5;
-
-    for (let i = 0; i < uvData.length; i += 2) {
-      const originalU = originalUVs[i];
-      const originalV = originalUVs[i + 1];
-
-      // Apply scale around center
-      const scaledU = cx + (originalU - cx) / currentScaleX;
-      const scaledV = cy + (originalV - cy) / currentScaleY;
-
-      // Apply pan offset
-      uvData[i] = scaledU + currentPanX;
-      uvData[i + 1] = scaledV + currentPanY;
-    }
-    uvBuffer.update();
-
-    // Auto-save state
-    const state = {
-      scaleX: currentScaleX,
-      scaleY: currentScaleY,
-      panX: currentPanX,
-      panY: currentPanY,
-    };
-    localStorage.setItem('meshTransform', JSON.stringify(state));
-  };
-
-  // Initialize original UVs
-  for (let i = 0; i < uvBuffer.data.length; i++) {
-    originalUVs[i] = uvBuffer.data[i];
+  function updateCorners() {
+    mesh.setCorners(
+      // top-left
+      quad[0].x,
+      quad[0].y,
+      // top-right
+      quad[1].x,
+      quad[1].y,
+      // bottom-right
+      quad[2].x,
+      quad[2].y,
+      // bottom-left
+      quad[3].x,
+      quad[3].y
+    );
   }
 
-  function scale(value: number) {
-    currentScaleX *= value;
-    currentScaleY *= value;
-    applyTransform();
+  updateCorners();
+
+  // Your quad points in image pixels (must correspond to rectangle corners):
+  // p0 -> top-left, p1 -> top-right, p2 -> bottom-right, p3 -> bottom-left (for example)
+
+  const space = rectSpaceFromImageQuad(quad);
+
+  // ----- Example -----
+
+  // Map an image point into rectangle coords (u,v)
+  const uv = space.toRect({ x: 200, y: 150 });
+
+  // Edit in rect space (parallel stuff stays parallel here)
+  const uvMoved = { x: uv.x + 0.1, y: uv.y };
+
+  // Project back to image pixels
+  const xy = space.toImage(uvMoved);
+
+  console.log({ uv, uvMoved, xy });
+
+  function moveInUv(xy: Point, du: number, dv: number) {
+    const uv = space.toRect(xy);
+    const uvMoved = { x: uv.x + du, y: uv.y + dv };
+    const xyMoved = space.toImage(uvMoved);
+    return xyMoved;
+  }
+
+  function moveEntireQuad(du: number, dv: number) {
+    quad[0] = moveInUv(quad[0], du, dv);
+    quad[1] = moveInUv(quad[1], du, dv);
+    quad[2] = moveInUv(quad[2], du, dv);
+    quad[3] = moveInUv(quad[3], du, dv);
+    updateCorners();
   }
 
   function panRight() {
-    currentPanX -= 0.05;
-    applyTransform();
-  }
-
-  function panLeft() {
-    currentPanX += 0.05;
-    applyTransform();
+    moveEntireQuad(0.1, 0);
   }
 
   function panUp() {
-    currentPanY += 0.05;
-    applyTransform();
+    moveEntireQuad(0, -0.1);
   }
 
   function panDown() {
-    currentPanY -= 0.05;
-    applyTransform();
+    moveEntireQuad(0, 0.1);
   }
 
-  // Load saved state on initialization
-  const saved = localStorage.getItem('meshTransform');
-  if (saved) {
-    const state = JSON.parse(saved);
-    currentScaleX = state.scaleX ?? 1;
-    currentScaleY = state.scaleY ?? 1;
-    currentPanX = state.panX ?? 0;
-    currentPanY = state.panY ?? 0;
-    applyTransform();
+  function panLeft() {
+    moveEntireQuad(-0.1, 0);
   }
 
-  function downloadCanvas() {
-    const backgroundColor = app.renderer.background.color;
-
-    app.renderer.extract.download({
-      target: app.stage,
-      filename: 'canvas.png',
-      frame: app.screen,
-      clearColor: backgroundColor,
-    });
+  function scale(d: number) {
+    quad[1] = moveInUv(quad[1], d, 0);
+    quad[2] = moveInUv(quad[2], d, d);
+    quad[3] = moveInUv(quad[3], 0, d);
+    updateCorners();
   }
 
-  (window as any).scale = scale;
   (window as any).panRight = panRight;
-  (window as any).panLeft = panLeft;
   (window as any).panUp = panUp;
   (window as any).panDown = panDown;
-  (window as any).downloadCanvas = downloadCanvas;
+  (window as any).panLeft = panLeft;
+  (window as any).scale = scale;
 })();
