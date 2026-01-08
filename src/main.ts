@@ -41,12 +41,48 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   app.stage.addChild(mesh);
   app.stage.addChild(imageOutline);
 
+  const handleSize = 10;
+
+  const makeHandle = (cursor: string) => {
+    const g = new Graphics()
+      .rect(-handleSize / 2, -handleSize / 2, handleSize, handleSize)
+      .fill({ color: 0xffffff })
+      .stroke({ color: 0x00ff00, width: 2, alignment: 0 });
+    g.eventMode = 'static';
+    g.cursor = cursor;
+    return g;
+  };
+
+  const cornerHandles = [
+    makeHandle('nwse-resize'),
+    makeHandle('nesw-resize'),
+    makeHandle('nwse-resize'),
+    makeHandle('nesw-resize'),
+  ];
+
+  const edgeHandles = [
+    makeHandle('ns-resize'),
+    makeHandle('ew-resize'),
+    makeHandle('ns-resize'),
+    makeHandle('ew-resize'),
+  ];
+
+  for (const h of [...edgeHandles, ...cornerHandles]) app.stage.addChild(h);
+
   function updateCorners() {
     imageOutline
       .clear()
       .poly(quad, true)
       .stroke({ color: 0x00ff00, width: 2, alignment: 0 })
       .fill({ color: 0x000000, alpha: 0 });
+
+    for (let i = 0; i < 4; i++) {
+      cornerHandles[i].position.set(quad[i].x, quad[i].y);
+
+      const a = quad[i];
+      const b = quad[(i + 1) % 4];
+      edgeHandles[i].position.set((a.x + b.x) / 2, (a.y + b.y) / 2);
+    }
 
     mesh.setCorners(
       // top-left
@@ -118,21 +154,26 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
   function setupUvDrag(
     target: Graphics,
-    onDrag: (du: number, dv: number) => void
+    onDrag: (du: number, dv: number) => void,
+    options = {
+      cursor: 'grab',
+      activeCursor: 'grabbing',
+      stopPropagation: false,
+    }
   ) {
     let isDragging = false;
     let dragStartUv: Point | null = null;
     let pointerId: number | null = null;
 
     target.eventMode = 'static';
-    target.cursor = 'grab';
+    target.cursor = options.cursor;
 
     const endDrag = () => {
       if (!isDragging) return;
       isDragging = false;
       dragStartUv = null;
       pointerId = null;
-      target.cursor = 'grab';
+      target.cursor = options.cursor;
 
       app.stage.off('globalpointermove', onMove);
       app.stage.off('pointerup', endDrag);
@@ -154,11 +195,12 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
     target.on('pointerdown', (e: FederatedPointerEvent) => {
       if (isDragging) return;
+      if (options.stopPropagation) e.stopPropagation();
 
       isDragging = true;
       pointerId = e.pointerId;
       dragStartUv = space.toRect(e.global);
-      target.cursor = 'grabbing';
+      target.cursor = options.activeCursor;
 
       app.canvas.setPointerCapture?.(e.pointerId);
 
@@ -167,6 +209,78 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
       app.stage.on('pointerupoutside', endDrag);
       app.stage.on('pointercancel', endDrag);
     });
+  }
+
+  const applyUvChanges = (changes: [number, number, number][]) => {
+    for (const [i, du, dv] of changes) quad[i] = moveInUv(quad[i], du, dv);
+    space = rectSpaceFromImageQuad(quad);
+    updateCorners();
+  };
+
+  for (let i = 0; i < 4; i++) {
+    const edgeCursor = edgeHandles[i].cursor ?? 'default';
+    setupUvDrag(
+      edgeHandles[i],
+      (du, dv) => {
+        if (i === 0)
+          applyUvChanges([
+            [0, 0, dv],
+            [1, 0, dv],
+          ]);
+        if (i === 1)
+          applyUvChanges([
+            [1, du, 0],
+            [2, du, 0],
+          ]);
+        if (i === 2)
+          applyUvChanges([
+            [2, 0, dv],
+            [3, 0, dv],
+          ]);
+        if (i === 3)
+          applyUvChanges([
+            [3, du, 0],
+            [0, du, 0],
+          ]);
+      },
+      { cursor: edgeCursor, activeCursor: edgeCursor, stopPropagation: true }
+    );
+
+    const cornerCursor = cornerHandles[i].cursor ?? 'default';
+    setupUvDrag(
+      cornerHandles[i],
+      (du, dv) => {
+        if (i === 0)
+          applyUvChanges([
+            [0, du, dv],
+            [1, 0, dv],
+            [3, du, 0],
+          ]);
+        if (i === 1)
+          applyUvChanges([
+            [1, du, dv],
+            [0, 0, dv],
+            [2, du, 0],
+          ]);
+        if (i === 2)
+          applyUvChanges([
+            [2, du, dv],
+            [1, du, 0],
+            [3, 0, dv],
+          ]);
+        if (i === 3)
+          applyUvChanges([
+            [3, du, dv],
+            [0, du, 0],
+            [2, 0, dv],
+          ]);
+      },
+      {
+        cursor: cornerCursor,
+        activeCursor: cornerCursor,
+        stopPropagation: true,
+      }
+    );
   }
 
   setupUvDrag(imageOutline, moveEntireQuad);
