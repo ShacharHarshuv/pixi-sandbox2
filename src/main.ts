@@ -1,10 +1,5 @@
-import {
-  Application,
-  Assets,
-  Graphics,
-  PerspectiveMesh,
-  FederatedPointerEvent,
-} from 'pixi.js';
+import { Application, Assets, Graphics, PerspectiveMesh } from 'pixi.js';
+import type { FederatedPointerEvent } from 'pixi.js';
 import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
 (async () => {
@@ -18,6 +13,9 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   });
 
   document.body.appendChild(app.canvas);
+
+  app.stage.eventMode = 'static';
+  app.stage.hitArea = app.screen;
 
   const texture = await Assets.load('/assets/image.jpeg');
 
@@ -124,38 +122,50 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   ) {
     let isDragging = false;
     let dragStartUv: Point | null = null;
+    let pointerId: number | null = null;
 
     target.eventMode = 'static';
     target.cursor = 'grab';
 
+    const endDrag = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      dragStartUv = null;
+      pointerId = null;
+      target.cursor = 'grab';
+
+      app.stage.off('globalpointermove', onMove);
+      app.stage.off('pointerup', endDrag);
+      app.stage.off('pointerupoutside', endDrag);
+      app.stage.off('pointercancel', endDrag);
+    };
+
+    const onMove = (e: FederatedPointerEvent) => {
+      if (!isDragging || !dragStartUv) return;
+      if (pointerId !== null && e.pointerId !== pointerId) return;
+
+      const currentPos = e.global;
+      const currentUv = space.toRect(currentPos);
+      const du = currentUv.x - dragStartUv.x;
+      const dv = currentUv.y - dragStartUv.y;
+      onDrag(du, dv);
+      dragStartUv = space.toRect(currentPos);
+    };
+
     target.on('pointerdown', (e: FederatedPointerEvent) => {
+      if (isDragging) return;
+
       isDragging = true;
-      const startPos = e.global;
-      dragStartUv = space.toRect(startPos);
+      pointerId = e.pointerId;
+      dragStartUv = space.toRect(e.global);
       target.cursor = 'grabbing';
-    });
 
-    target.on('pointermove', (e: FederatedPointerEvent) => {
-      if (isDragging && dragStartUv) {
-        const currentPos = e.global;
-        const currentUv = space.toRect(currentPos);
-        const du = currentUv.x - dragStartUv.x;
-        const dv = currentUv.y - dragStartUv.y;
-        onDrag(du, dv);
-        dragStartUv = space.toRect(currentPos);
-      }
-    });
+      app.canvas.setPointerCapture?.(e.pointerId);
 
-    target.on('pointerup', () => {
-      isDragging = false;
-      dragStartUv = null;
-      target.cursor = 'grab';
-    });
-
-    target.on('pointerupoutside', () => {
-      isDragging = false;
-      dragStartUv = null;
-      target.cursor = 'grab';
+      app.stage.on('globalpointermove', onMove);
+      app.stage.on('pointerup', endDrag);
+      app.stage.on('pointerupoutside', endDrag);
+      app.stage.on('pointercancel', endDrag);
     });
   }
 
