@@ -1,4 +1,10 @@
-import { Application, Assets, Graphics, PerspectiveMesh } from 'pixi.js';
+import {
+  Application,
+  Assets,
+  Graphics,
+  PerspectiveMesh,
+  FederatedPointerEvent,
+} from 'pixi.js';
 import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
 (async () => {
@@ -65,7 +71,7 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   // Your quad points in image pixels (must correspond to rectangle corners):
   // p0 -> top-left, p1 -> top-right, p2 -> bottom-right, p3 -> bottom-left (for example)
 
-  const space = rectSpaceFromImageQuad(quad);
+  let space = rectSpaceFromImageQuad(quad);
 
   function moveInUv(xy: Point, du: number, dv: number) {
     const uv = space.toRect(xy);
@@ -79,6 +85,7 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
     quad[1] = moveInUv(quad[1], du, dv);
     quad[2] = moveInUv(quad[2], du, dv);
     quad[3] = moveInUv(quad[3], du, dv);
+    space = rectSpaceFromImageQuad(quad);
     updateCorners();
   }
 
@@ -111,39 +118,46 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   (window as any).panLeft = panLeft;
   (window as any).scale = scale;
 
-  let isDragging = false;
-  let dragStartUv: Point | null = null;
+  function setupUvDrag(
+    target: Graphics,
+    onDrag: (du: number, dv: number) => void
+  ) {
+    let isDragging = false;
+    let dragStartUv: Point | null = null;
 
-  imageOutline.eventMode = 'static';
-  imageOutline.cursor = 'grab';
+    target.eventMode = 'static';
+    target.cursor = 'grab';
 
-  imageOutline.on('pointerdown', (e) => {
-    isDragging = true;
-    const startPos = e.global;
-    dragStartUv = space.toRect(startPos);
-    mesh.cursor = 'grabbing';
-  });
+    target.on('pointerdown', (e: FederatedPointerEvent) => {
+      isDragging = true;
+      const startPos = e.global;
+      dragStartUv = space.toRect(startPos);
+      target.cursor = 'grabbing';
+    });
 
-  imageOutline.on('pointermove', (e) => {
-    if (isDragging && dragStartUv) {
-      const currentPos = e.global;
-      const currentUv = space.toRect(currentPos);
-      const du = currentUv.x - dragStartUv.x;
-      const dv = currentUv.y - dragStartUv.y;
-      moveEntireQuad(du, dv);
-      dragStartUv = space.toRect(currentPos);
-    }
-  });
+    target.on('pointermove', (e: FederatedPointerEvent) => {
+      if (isDragging && dragStartUv) {
+        const currentPos = e.global;
+        const currentUv = space.toRect(currentPos);
+        const du = currentUv.x - dragStartUv.x;
+        const dv = currentUv.y - dragStartUv.y;
+        onDrag(du, dv);
+        dragStartUv = space.toRect(currentPos);
+      }
+    });
 
-  imageOutline.on('pointerup', () => {
-    isDragging = false;
-    dragStartUv = null;
-    mesh.cursor = 'grab';
-  });
+    target.on('pointerup', () => {
+      isDragging = false;
+      dragStartUv = null;
+      target.cursor = 'grab';
+    });
 
-  imageOutline.on('pointerupoutside', () => {
-    isDragging = false;
-    dragStartUv = null;
-    mesh.cursor = 'grab';
-  });
+    target.on('pointerupoutside', () => {
+      isDragging = false;
+      dragStartUv = null;
+      target.cursor = 'grab';
+    });
+  }
+
+  setupUvDrag(imageOutline, moveEntireQuad);
 })();
