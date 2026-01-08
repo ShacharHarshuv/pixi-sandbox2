@@ -32,10 +32,18 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   quadMask.poly(quad, true).fill({ color: 0xff0000 });
   mesh.mask = quadMask;
 
+  const imageOutline = new Graphics();
+
   app.stage.addChild(mesh);
-  app.stage.addChild(quadMask);
+  app.stage.addChild(imageOutline);
 
   function updateCorners() {
+    imageOutline
+      .clear()
+      .poly(quad, true)
+      .stroke({ color: 0x00ff00, width: 2, alignment: 0 })
+      .fill({ color: 0x000000, alpha: 0 });
+
     mesh.setCorners(
       // top-left
       quad[0].x,
@@ -102,4 +110,40 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   (window as any).panDown = panDown;
   (window as any).panLeft = panLeft;
   (window as any).scale = scale;
+
+  let isDragging = false;
+  let dragStartUv: Point | null = null;
+
+  imageOutline.eventMode = 'static';
+  imageOutline.cursor = 'grab';
+
+  imageOutline.on('pointerdown', (e) => {
+    isDragging = true;
+    const startPos = e.global;
+    dragStartUv = space.toRect(startPos);
+    mesh.cursor = 'grabbing';
+  });
+
+  imageOutline.on('pointermove', (e) => {
+    if (isDragging && dragStartUv) {
+      const currentPos = e.global;
+      const currentUv = space.toRect(currentPos);
+      const du = currentUv.x - dragStartUv.x;
+      const dv = currentUv.y - dragStartUv.y;
+      moveEntireQuad(du, dv);
+      dragStartUv = space.toRect(currentPos);
+    }
+  });
+
+  imageOutline.on('pointerup', () => {
+    isDragging = false;
+    dragStartUv = null;
+    mesh.cursor = 'grab';
+  });
+
+  imageOutline.on('pointerupoutside', () => {
+    isDragging = false;
+    dragStartUv = null;
+    mesh.cursor = 'grab';
+  });
 })();
