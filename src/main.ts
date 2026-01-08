@@ -1,4 +1,4 @@
-import { Application, Assets, PerspectiveMesh } from 'pixi.js';
+import { Application, Assets, Graphics, PerspectiveMesh } from 'pixi.js';
 import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
 (async () => {
@@ -28,7 +28,12 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
     verticesY: 10,
   });
 
+  const quadMask = new Graphics();
+  quadMask.poly(quad, true).fill({ color: 0xff0000 });
+  mesh.mask = quadMask;
+
   app.stage.addChild(mesh);
+  app.stage.addChild(quadMask);
 
   function updateCorners() {
     mesh.setCorners(
@@ -53,19 +58,6 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
   // p0 -> top-left, p1 -> top-right, p2 -> bottom-right, p3 -> bottom-left (for example)
 
   const space = rectSpaceFromImageQuad(quad);
-
-  // ----- Example -----
-
-  // Map an image point into rectangle coords (u,v)
-  const uv = space.toRect({ x: 200, y: 150 });
-
-  // Edit in rect space (parallel stuff stays parallel here)
-  const uvMoved = { x: uv.x + 0.1, y: uv.y };
-
-  // Project back to image pixels
-  const xy = space.toImage(uvMoved);
-
-  console.log({ uv, uvMoved, xy });
 
   function moveInUv(xy: Point, du: number, dv: number) {
     const uv = space.toRect(xy);
