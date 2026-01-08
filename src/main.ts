@@ -13,7 +13,7 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
 
   document.body.appendChild(app.canvas);
 
-  const texture = await Assets.load('/assets/image.png');
+  const texture = await Assets.load('/assets/image.jpeg');
 
   const quad: Quad = [
     { x: 200, y: 150 },
