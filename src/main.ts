@@ -10,6 +10,7 @@ import { Point, Quad, rectSpaceFromImageQuad } from './algebra';
     width: 800,
     height: 600,
     backgroundColor: 0x1099bb,
+    antialias: true,
   });
 
   document.body.appendChild(app.canvas);
